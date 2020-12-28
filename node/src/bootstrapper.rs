@@ -540,7 +540,7 @@ impl Bootstrapper {
                 )
                 .expect("Cannot initialize database");
             let config_dao = ConfigDaoReal::new(conn);
-            let mut persistent_config = PersistentConfigurationReal::new(Box::new(config_dao));
+            let mut persistent_config = PersistentConfigurationReal::new(Box::new(config_dao),&0);
             let clandestine_port = self.establish_clandestine_port(&mut persistent_config);
             let mut listener_handler = self.listener_handler_factory.make();
             listener_handler
@@ -1609,7 +1609,7 @@ For more information try --help".to_string()
             .initialize(&data_dir, chain_id, true)
             .unwrap();
         let config_dao = ConfigDaoReal::new(conn);
-        let persistent_config = PersistentConfigurationReal::new(Box::new(config_dao));
+        let persistent_config = PersistentConfigurationReal::new(Box::new(config_dao),&0);
         assert_eq!(
             1234u16,
             persistent_config.clandestine_port().unwrap().unwrap()
@@ -1681,7 +1681,7 @@ For more information try --help".to_string()
             .initialize(&data_dir, chain_id, true)
             .unwrap();
         let config_dao = ConfigDaoReal::new(conn);
-        let persistent_config = PersistentConfigurationReal::new(Box::new(config_dao));
+        let persistent_config = PersistentConfigurationReal::new(Box::new(config_dao),&0);
         let clandestine_port = persistent_config.clandestine_port().unwrap().unwrap();
         assert_eq!(
             subject

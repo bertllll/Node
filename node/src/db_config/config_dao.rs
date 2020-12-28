@@ -47,7 +47,7 @@ pub trait ConfigDaoReadWrite: ConfigDaoRead + ConfigDaoWrite {}
 // ConfigDaoReadWrite, which contains a Transaction and _can_ write to the database.
 pub trait ConfigDao: ConfigDaoRead {
     fn start_transaction<'b, 'c: 'b>(
-        &'c mut self,
+        &'c mut self, reference:&'c u8
     ) -> Result<Box<dyn ConfigDaoReadWrite + 'b>, ConfigDaoError>;
 }
 
@@ -57,8 +57,9 @@ pub struct ConfigDaoReal {
 
 impl ConfigDao for ConfigDaoReal {
     fn start_transaction<'b, 'c: 'b>(
-        &'c mut self,
+        &'c mut self, reference: &'c u8
     ) -> Result<Box<dyn ConfigDaoReadWrite + 'b>, ConfigDaoError> {
+        reference;
         let transaction: Transaction<'b> = match self.conn.transaction() {
             Ok(t) => t,
             // This line is untested, because we don't know how to pop this error in a test
@@ -310,7 +311,7 @@ mod tests {
             Some("Two wrongs don't make a right, but two Wrights make an airplane"),
             true,
         );
-        let mut subject = dao.start_transaction().unwrap();
+        let mut subject = dao.start_transaction(&0).unwrap();
 
         subject
             .set(
@@ -352,7 +353,7 @@ mod tests {
                 .unwrap(),
         );
         {
-            let mut first_writer = dao.start_transaction().unwrap();
+            let mut first_writer = dao.start_transaction(&0).unwrap();
             let transaction = first_writer.extract().unwrap();
             let mut subject = ConfigDaoWriteableReal::new(transaction);
 
@@ -406,7 +407,7 @@ mod tests {
             true,
         );
         {
-            let subject = dao.start_transaction().unwrap();
+            let subject = dao.start_transaction(&0).unwrap();
 
             subject
                 .set(
@@ -446,7 +447,7 @@ mod tests {
                 .initialize(&home_dir, DEFAULT_CHAIN_ID, true)
                 .unwrap(),
         );
-        let subject = dao.start_transaction().unwrap();
+        let subject = dao.start_transaction(&0).unwrap();
 
         let result = subject.set("booga", Some("bigglesworth".to_string()));
 
@@ -465,7 +466,7 @@ mod tests {
                 .unwrap(),
         );
         {
-            let mut subject = dao.start_transaction().unwrap();
+            let mut subject = dao.start_transaction(&0).unwrap();
 
             let _ = subject.set("schema_version", None).unwrap();
             subject.commit().unwrap();

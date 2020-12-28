@@ -653,7 +653,7 @@ mod tests {
                 .initialize(&home_dir, DEFAULT_CHAIN_ID, true)
                 .unwrap(),
         );
-        let persistent_config = PersistentConfigurationReal::new(Box::new(config_dao));
+        let persistent_config = PersistentConfigurationReal::new(Box::new(config_dao),&0);
         let start_block = persistent_config.start_block().unwrap().unwrap();
         assert_eq!(57u64, start_block);
     }

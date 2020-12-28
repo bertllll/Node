@@ -45,7 +45,7 @@ mod tests {
             .unwrap();
         let mut config_dao = ConfigDaoReal::new(conn);
         {
-            let mut writer = config_dao.start_transaction().unwrap();
+            let mut writer = config_dao.start_transaction(&0).unwrap();
             writer
                 .set("schema_version", Some("booga".to_string()))
                 .unwrap();
@@ -65,7 +65,7 @@ mod tests {
             .unwrap();
         let mut config_dao = ConfigDaoReal::new(conn);
         {
-            let writer = config_dao.start_transaction().unwrap();
+            let writer = config_dao.start_transaction(&0).unwrap();
             writer
                 .set("schema_version", Some("booga".to_string()))
                 .unwrap();

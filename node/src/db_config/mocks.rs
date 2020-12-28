@@ -27,7 +27,7 @@ impl ConfigDaoRead for ConfigDaoMock {
 
 impl ConfigDao for ConfigDaoMock {
     fn start_transaction<'b, 'c: 'b>(
-        &'c mut self,
+        &'c mut self, _reference: &u8
     ) -> Result<Box<dyn ConfigDaoReadWrite + 'b>, ConfigDaoError> {
         self.start_transaction_results.borrow_mut().remove(0)
     }

@@ -388,7 +388,7 @@ impl ActorFactory for ActorFactoryReal {
                     )
                 }),
         ));
-        let persistent_config = Box::new(PersistentConfigurationReal::new(config_dao));
+        let persistent_config = Box::new(PersistentConfigurationReal::new(config_dao,&0));
         let blockchain_bridge =
             BlockchainBridge::new(config, blockchain_interface, persistent_config);
         let addr: Addr<BlockchainBridge> = blockchain_bridge.start();

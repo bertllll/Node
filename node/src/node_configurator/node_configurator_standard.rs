@@ -1840,7 +1840,7 @@ mod tests {
             DbInitializerReal::new()
                 .initialize(&home_dir.clone(), DEFAULT_CHAIN_ID, true)
                 .unwrap(),
-        )));
+        )),&0);
         let consuming_private_key =
             "89ABCDEF89ABCDEF89ABCDEF89ABCDEF89ABCDEF89ABCDEF89ABCDEF89ABCDEF";
         let config_file_path = home_dir.join("config.toml");
@@ -1992,7 +1992,7 @@ mod tests {
         let consuming_private_key_text =
             "ABCDEF01ABCDEF01ABCDEF01ABCDEF01ABCDEF01ABCDEF01ABCDEF01ABCDEF01";
         let consuming_private_key = PlainData::from_str(consuming_private_key_text).unwrap();
-        let mut persistent_config = PersistentConfigurationReal::new(config_dao);
+        let mut persistent_config = PersistentConfigurationReal::new(config_dao,&0);
         let password = "secret-db-password";
         let args = ArgsBuilder::new()
             .param("--config-file", "specified_config.toml")

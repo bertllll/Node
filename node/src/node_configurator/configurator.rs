@@ -97,7 +97,7 @@ impl Configurator {
             .expect("Couldn't initialize database");
         let config_dao = ConfigDaoReal::new(conn);
         let persistent_config: Box<dyn PersistentConfiguration> =
-            Box::new(PersistentConfigurationReal::new(Box::new(config_dao)));
+            Box::new(PersistentConfigurationReal::new(Box::new(config_dao),&0));
         Configurator::from(persistent_config)
     }
 
@@ -368,7 +368,7 @@ mod tests {
             DbInitializerReal::new()
                 .initialize(&data_dir, DEFAULT_CHAIN_ID, true)
                 .unwrap(),
-        )));
+        )),&0);
         let (recorder, _, _) = make_recorder();
         let recorder_addr = recorder.start();
         let mut subject = Configurator::new(data_dir, DEFAULT_CHAIN_ID);

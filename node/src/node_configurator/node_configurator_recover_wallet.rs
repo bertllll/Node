@@ -637,7 +637,7 @@ mod tests {
             .initialize(&data_directory, DEFAULT_CHAIN_ID, true)
             .unwrap();
         let mut persistent_config =
-            PersistentConfigurationReal::new(Box::new(ConfigDaoReal::new(conn)));
+            PersistentConfigurationReal::new(Box::new(ConfigDaoReal::new(conn)),&0);
         persistent_config
             .change_password(None, "rick-rolled")
             .unwrap();

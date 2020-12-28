@@ -140,11 +140,11 @@ match Self::set_wallet_info (persistent_config, seed, cwdp, ewa) {
 
 pub struct PersistentConfigurationReal<'a, 'b: 'a> {
     dao: Box<dyn ConfigDao + 'b>,
-    writer_opt: Option<Box<dyn ConfigDaoReadWrite + 'a>>,
+    writer_opt: LifetimeSaver<'a>,
     scl: SecureConfigLayer,
 }
 
-impl<'a, 'b: 'a> PersistentConfiguration for PersistentConfigurationReal<'a, 'b> {
+impl<'a:'c, 'b: 'a +'c, 'c, > PersistentConfiguration for PersistentConfigurationReal<'a, 'b> {
     fn current_schema_version(&self) -> String {
         match self.dao.get("schema_version") {
             Ok(record) => match record.value_opt {
@@ -170,7 +170,7 @@ impl<'a, 'b: 'a> PersistentConfiguration for PersistentConfigurationReal<'a, 'b>
         old_password_opt: Option<String>,
         new_password: &str,
     ) -> Result<(), PersistentConfigError> {
-        let mut writer = self.dao.start_transaction()?;
+        let mut writer = self.dao.start_transaction(&0)?;
         self.scl
             .change_password(old_password_opt, new_password, &mut writer)?;
         Ok(writer.commit()?)
@@ -202,7 +202,7 @@ impl<'a, 'b: 'a> PersistentConfiguration for PersistentConfigurationReal<'a, 'b>
         }
     }
 
-    fn set_clandestine_port(&mut self, port: u16) -> Result<(), PersistentConfigError> {
+    fn set_clandestine_port(& mut self, port: u16) -> Result<(), PersistentConfigError> {
         if port < LOWEST_USABLE_INSECURE_PORT {
             panic!("Can't continue; clandestine port configuration is incorrect. Must be between {} and {}, not {}. Specify --clandestine-port <p> where <p> is an unused port.",
                     LOWEST_USABLE_INSECURE_PORT, HIGHEST_USABLE_PORT, port);
@@ -214,8 +214,8 @@ impl<'a, 'b: 'a> PersistentConfiguration for PersistentConfigurationReal<'a, 'b>
         Ok(decode_u64(self.dao.get("gas_price")?.value_opt)?)
     }
 
-    fn set_gas_price(&mut self, gas_price: u64) -> Result<(), PersistentConfigError> {
-        self.set("gas_price", encode_u64(Some(gas_price))?)
+    fn set_gas_price(& mut self, gas_price: u64) -> Result<(), PersistentConfigError> {
+       unimplemented!() // self.set("gas_price", encode_u64(Some(gas_price))?)
     }
 
     fn mnemonic_seed(&self, db_password: &str) -> Result<Option<PlainData>, PersistentConfigError> {
@@ -230,12 +230,12 @@ impl<'a, 'b: 'a> PersistentConfiguration for PersistentConfigurationReal<'a, 'b>
         Ok(self.dao.get("seed")?.value_opt.is_some())
     }
 
-    fn set_mnemonic_seed<'c, 'd>(
+    fn set_mnemonic_seed<'d, 'e>(
         &mut self,
-        seed: &'c dyn AsRef<[u8]>,
-        db_password: &'d str,
+        seed: &'d dyn AsRef<[u8]>,
+        db_password: &'e str,
     ) -> Result<(), PersistentConfigError> {
-        let mut writer = self.dao.start_transaction()?;
+        let mut writer = self.dao.start_transaction(&0)?;
         let encoded_seed =
             encode_bytes(Some(PlainData::new(seed.as_ref())))?.expect("Value disappeared"); //the question mark here is useless, look inside the function
         writer.set(
@@ -272,12 +272,12 @@ impl<'a, 'b: 'a> PersistentConfiguration for PersistentConfigurationReal<'a, 'b>
         Ok(path_rec.value_opt)
     }
 
-    fn set_consuming_wallet_derivation_path<'b, 'c>(
+    fn set_consuming_wallet_derivation_path<'d, 'e>(
         &mut self,
-        derivation_path: &'b str,
-        db_password: &'c str,
+        derivation_path: &'d str,
+        db_password: &'e str,
     ) -> Result<(), PersistentConfigError> {
-        let mut writer = self.dao.start_transaction()?;
+        let mut writer = self.dao.start_transaction(&0)?;
         let key_rec = writer.get("consuming_wallet_public_key")?;
         let seed_opt = decode_bytes(self.scl.decrypt(
             writer.get("seed")?,
@@ -312,12 +312,12 @@ impl<'a, 'b: 'a> PersistentConfiguration for PersistentConfigurationReal<'a, 'b>
         }
     }
 
-    fn set_consuming_wallet_public_key<'c>(
+    fn set_consuming_wallet_public_key<'d>(
         &mut self,
-        public_key: &'c PlainData,
+        public_key: &'d PlainData,
     ) -> Result<(), PersistentConfigError> {
         let public_key_text: String = public_key.as_slice().to_hex();
-        let mut writer = self.dao.start_transaction()?;
+        let mut writer = self.dao.start_transaction(&0)?;
         let key_rec = writer.get("consuming_wallet_public_key")?;
         let path_rec = writer.get("consuming_wallet_derivation_path")?;
         match (decode_bytes(key_rec.value_opt)?, public_key, path_rec.value_opt) {
@@ -348,16 +348,16 @@ impl<'a, 'b: 'a> PersistentConfiguration for PersistentConfigurationReal<'a, 'b>
         Ok(self.dao.get("earning_wallet_address")?.value_opt)
     }
 
-    fn set_earning_wallet_address<'b>(
+    fn set_earning_wallet_address<'d>(
         &mut self,
-        new_address: &'b str,
+        new_address: &'d str,
     ) -> Result<(), PersistentConfigError> {
         if Wallet::from_str(new_address).is_err() {
             return Err(PersistentConfigError::BadAddressFormat(
                 new_address.to_string(),
             ));
         }
-        let mut writer = self.dao.start_transaction()?;
+        let mut writer = self.dao.start_transaction(&0)?;
         let existing_address_opt = writer.get("earning_wallet_address")?.value_opt;
         match existing_address_opt {
             None => {
@@ -397,7 +397,7 @@ impl<'a, 'b: 'a> PersistentConfiguration for PersistentConfigurationReal<'a, 'b>
                 &serde_cbor::ser::to_vec(&node_descriptors).expect("Serialization failed"),
             )
         });
-        let mut writer = self.dao.start_transaction()?;
+        let mut writer = self.dao.start_transaction(&0)?;
         writer.set(
             "past_neighbors",
             self.scl.encrypt(
@@ -415,22 +415,22 @@ impl<'a, 'b: 'a> PersistentConfiguration for PersistentConfigurationReal<'a, 'b>
     }
 
     fn set_start_block(&mut self, value: u64) -> Result<(), PersistentConfigError> {
-        let mut writer = self.dao.start_transaction()?;
+        let mut writer = self.dao.start_transaction(&0)?;
         writer.set("start_block", encode_u64(Some(value))?)?;
         Ok(writer.commit()?)
     }
 
     fn commit(&mut self) -> Result<(), PersistentConfigError> {
-        match self.writer_opt.take() {
-            None => Err (PersistentConfigError::TransactionError),
-            Some(mut writer) => Ok(writer.commit()?),
+        match &self.writer_opt {
+            LifetimeSaver::Uninitialized(_) => Err (PersistentConfigError::TransactionError),
+            LifetimeSaver::Initialized(mut writer) => Ok(writer.commit()?),
         }
     }
 
     fn rollback(&mut self) -> Result<(), PersistentConfigError> {
-        match self.writer_opt.take() {
-            None => Err (PersistentConfigError::TransactionError),
-            Some(_) => Ok(()), // will roll back when discarded
+        match &self.writer_opt {
+            LifetimeSaver::Uninitialized(_) => Err (PersistentConfigError::TransactionError),
+            LifetimeSaver::Initialized(_) => Ok(()), // will roll back when discarded
         }
     }
 }
@@ -444,44 +444,80 @@ impl From<Box<dyn ConnectionWrapper>> for PersistentConfigurationReal<'_, '_> {
 
 impl From<Box<dyn ConfigDao>> for PersistentConfigurationReal<'_, '_> {
     fn from(config_dao: Box<dyn ConfigDao>) -> Self {
-        Self::new(config_dao)
+        Self::new(config_dao,&0)
     }
 }
 
-impl<'a, 'b: 'a> PersistentConfigurationReal<'a, 'b> {
-    pub fn new(config_dao: Box<dyn ConfigDao>) -> PersistentConfigurationReal<'a, 'b> {
+// Moved here for easier reading
+// pub struct PersistentConfigurationReal<'a, 'b: 'a> {
+//     dao: Box<dyn ConfigDao + 'b>,
+//     writer_opt: Option<Box<dyn ConfigDaoReadWrite + 'a>>,
+//     scl: SecureConfigLayer,
+// }
+
+impl<'b: 'a +'c, 'a: 'c, 'c> PersistentConfigurationReal<'a, 'b> {
+    pub fn new(config_dao: Box<dyn ConfigDao+'b>, lifetime_giver:&'a u8) -> PersistentConfigurationReal<'a, 'b> {
         PersistentConfigurationReal {
             dao: config_dao,
-            writer_opt: None,
+            writer_opt: LifetimeSaver::Uninitialized(LifetimeCarrier(& lifetime_giver )),
             scl: SecureConfigLayer::default(),
         }
     }
 
     fn get_all(&self) -> Result<Vec<ConfigDaoRecord>, PersistentConfigError> {
         match &self.writer_opt {
-            Some (writer) => Ok(writer.get_all()?),
-            None => Ok(self.dao.get_all()?)
+            LifetimeSaver::Initialized(writer) => Ok(writer.get_all()?),
+            LifetimeSaver::Uninitialized(_) => Ok(self.dao.get_all()?)
         }
     }
 
     fn get(&self, name: &str) -> Result<ConfigDaoRecord, PersistentConfigError> {
         match &self.writer_opt {
-            Some (writer) => Ok(writer.get(name)?),
-            None => Ok(self.dao.get(name)?)
+            LifetimeSaver::Initialized(writer) => Ok(writer.get(name)?),
+            LifetimeSaver::Uninitialized(_) => Ok(self.dao.get(name)?)
         }
     }
 
-    fn set(&'b mut self, name: &str, value: Option<String>) -> Result<(), PersistentConfigError> {
-        match &self.writer_opt {
-            Some (writer) => Ok(writer.set(name, value)?),
-            None => {
-                let mut writer: Box<dyn ConfigDaoReadWrite + 'a> = self.dao.start_transaction()?;
+    fn set(&'b mut self, name: &'c str, value: Option<String>) -> Result<(), PersistentConfigError> {
+        match &self.writer_opt{
+            LifetimeSaver::Initialized(writer) => Ok(writer.set(name, value)?),
+            LifetimeSaver::Uninitialized(ltc) => {
+                let mut writer: Box<dyn ConfigDaoReadWrite + 'a> = self.dao.start_transaction(ltc.0)?;
                 writer.set (name, value)?;
+                self.writer_opt = LifetimeSaver::Initialized(writer);
                 Ok(())
             }
         }
     }
 }
+
+pub enum LifetimeSaver<'a>{
+    Initialized(Box<dyn ConfigDaoReadWrite + 'a>),
+    Uninitialized(LifetimeCarrier<'a>)
+}
+pub struct LifetimeCarrier<'a>(&'a u8);
+
+//     fn set(name: &str, value: Option<String>, persist_config:Box<dyn PersistentConfiguration+'c>) -> Result<(), PersistentConfigError> {
+//         match persist_config.writer_opt{
+//             Some (writer) => Ok(writer.set(name, value)?),
+//             None => {
+//                 let mut writer: Box<dyn ConfigDaoReadWrite + 'a> = persist_config.dao.start_transaction()?;
+//                 writer.set (name, value)?;
+//                 persist_config.writer_opt = &Some(writer);
+//                 Ok(())
+//             }
+//         }
+//     }
+// }
+
+
+// fn dao_inferring_tool<'c,'a,'b>(pers_config:&'c Box<dyn PersistentConfiguration+'a>)->PersistentConfigurationReal<'a,'b>{
+// PersistentConfigurationReal{
+//     dao: Box::new(*pers_config.dao),
+//     writer_opt:  Some(Box::new(*pers_config.writer_opt)),
+//     scl: Default::default()
+// }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -560,7 +596,7 @@ mod tests {
     #[should_panic(expected = "Can't continue; current schema version is inaccessible: NotPresent")]
     fn current_schema_version_panics_if_record_is_missing() {
         let config_dao = ConfigDaoMock::new().get_result(Err(ConfigDaoError::NotPresent));
-        let subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
 
         subject.current_schema_version();
     }
@@ -573,7 +609,7 @@ mod tests {
             None,
             false,
         )));
-        let subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
 
         subject.current_schema_version();
     }
@@ -588,7 +624,7 @@ mod tests {
                 Some("1.2.3"),
                 false,
             )));
-        let subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
 
         let result = subject.current_schema_version();
 
@@ -606,7 +642,7 @@ mod tests {
                 .get_result(Err(ConfigDaoError::NotPresent)),
         );
         let dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(dao);
+        let mut subject = PersistentConfigurationReal::new(dao,&0);
 
         let result = subject.change_password(None, "password");
 
@@ -621,7 +657,7 @@ mod tests {
         let config_dao = ConfigDaoMock::new()
             .get_params(&get_string_params_arc)
             .get_result(Ok(ConfigDaoRecord::new(EXAMPLE_ENCRYPTED, None, true)));
-        let subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
 
         let result = subject.check_password(None).unwrap();
 
@@ -640,7 +676,7 @@ mod tests {
             Some("65536"),
             false,
         )));
-        let subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
 
         subject.clandestine_port().unwrap();
     }
@@ -655,7 +691,7 @@ mod tests {
             Some("1024"),
             false,
         )));
-        let subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
 
         subject.clandestine_port().unwrap();
     }
@@ -671,7 +707,7 @@ mod tests {
             Some(&format!("{}", port)),
             false,
         )));
-        let subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
         let _listener =
             TcpListener::bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from(0), port))).unwrap();
 
@@ -688,7 +724,7 @@ mod tests {
                 Some("4747"),
                 false,
             )));
-        let subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
 
         let result = subject.clandestine_port().unwrap();
 
@@ -703,7 +739,7 @@ mod tests {
     )]
     fn set_clandestine_port_panics_if_configured_port_is_too_low() {
         let config_dao = ConfigDaoMock::new();
-        let mut subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let mut subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
 
         subject.set_clandestine_port(1024).unwrap();
     }
@@ -723,7 +759,7 @@ mod tests {
                 .commit_result(Ok(())),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.set_clandestine_port(4747);
 
@@ -757,7 +793,7 @@ mod tests {
                     true,
                 ))),
         );
-        let subject = PersistentConfigurationReal::new(config_dao);
+        let subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.mnemonic_seed("password").unwrap();
 
@@ -777,7 +813,7 @@ mod tests {
                 .get_params(&get_params_arc)
                 .get_result(Ok(ConfigDaoRecord::new("seed", Some("irrelevant"), true))),
         );
-        let subject = PersistentConfigurationReal::new(config_dao);
+        let subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.mnemonic_seed_exists().unwrap();
 
@@ -794,7 +830,7 @@ mod tests {
                 .get_params(&get_params_arc)
                 .get_result(Ok(ConfigDaoRecord::new("seed", None, true))),
         );
-        let subject = PersistentConfigurationReal::new(config_dao);
+        let subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.mnemonic_seed_exists().unwrap();
 
@@ -810,7 +846,7 @@ mod tests {
             Some("6"),
             false,
         ))));
-        let subject = PersistentConfigurationReal::new(config_dao);
+        let subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let start_block = subject.start_block().unwrap();
 
@@ -828,7 +864,7 @@ mod tests {
                 .commit_result(Ok(())),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.set_start_block(1234);
 
@@ -848,7 +884,7 @@ mod tests {
             false,
         ))));
 
-        let subject = PersistentConfigurationReal::new(config_dao);
+        let subject = PersistentConfigurationReal::new(config_dao,&0);
         let gas_price = subject.gas_price().unwrap();
 
         assert_eq!(gas_price, Some(3));
@@ -865,7 +901,7 @@ mod tests {
                 .commit_result(Ok(())),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.set_gas_price(1234);
 
@@ -905,7 +941,7 @@ mod tests {
                     true,
                 ))),
         );
-        let subject = PersistentConfigurationReal::new(config_dao);
+        let subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.past_neighbors("password").unwrap();
 
@@ -943,7 +979,7 @@ mod tests {
                 .commit_result(Ok(())),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         subject
             .set_past_neighbors(Some(node_descriptors.clone()), "password")
@@ -986,7 +1022,7 @@ mod tests {
                     false,
                 ))),
         );
-        let subject = PersistentConfigurationReal::new(config_dao);
+        let subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.consuming_wallet_public_key().unwrap();
 
@@ -1021,7 +1057,7 @@ mod tests {
                     false,
                 ))),
         );
-        let subject = PersistentConfigurationReal::new(config_dao);
+        let subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let _ = subject.consuming_wallet_public_key();
     }
@@ -1043,7 +1079,7 @@ mod tests {
                     false,
                 ))),
         );
-        let subject = PersistentConfigurationReal::new(config_dao);
+        let subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.consuming_wallet_public_key().unwrap();
 
@@ -1075,7 +1111,7 @@ mod tests {
                     false,
                 ))),
         );
-        let subject = PersistentConfigurationReal::new(config_dao);
+        let subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.consuming_wallet_derivation_path().unwrap();
 
@@ -1110,7 +1146,7 @@ mod tests {
                     false,
                 ))),
         );
-        let subject = PersistentConfigurationReal::new(config_dao);
+        let subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let _ = subject.consuming_wallet_derivation_path();
     }
@@ -1132,7 +1168,7 @@ mod tests {
                     false,
                 ))),
         );
-        let subject = PersistentConfigurationReal::new(config_dao);
+        let subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.consuming_wallet_derivation_path().unwrap();
 
@@ -1171,7 +1207,7 @@ mod tests {
                 .commit_result(Ok(())),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
         let public_key = PlainData::new(b"public key");
 
         let result = subject.set_consuming_wallet_public_key(&public_key);
@@ -1212,7 +1248,7 @@ mod tests {
                 ))),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
         let public_key = PlainData::new(b"new public key");
 
         let result = subject.set_consuming_wallet_public_key(&public_key);
@@ -1243,7 +1279,7 @@ mod tests {
                 ))),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
         let public_key = PlainData::new(b"existing public key");
 
         let result = subject.set_consuming_wallet_public_key(&public_key);
@@ -1267,7 +1303,7 @@ mod tests {
                 ))),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
         let public_key = PlainData::new(b"public key");
 
         let result = subject.set_consuming_wallet_public_key(&public_key);
@@ -1296,7 +1332,7 @@ mod tests {
                 ))),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
         let public_key = PlainData::new(b"public key");
 
         subject
@@ -1345,7 +1381,7 @@ mod tests {
                 .commit_result(Ok(())),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.set_consuming_wallet_derivation_path("m/44'/0'/0'/1/2", "password");
 
@@ -1413,7 +1449,7 @@ mod tests {
                 .commit_result(Ok(())),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.set_consuming_wallet_derivation_path("m/44'/0'/0'/1/2", "password");
 
@@ -1475,7 +1511,7 @@ mod tests {
                 .commit_result(Ok(())),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.set_consuming_wallet_derivation_path("m/44'/0'/0'/1/2", "password");
 
@@ -1511,7 +1547,7 @@ mod tests {
                 ))),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.set_consuming_wallet_derivation_path("m/44'/0'/0'/1/0", "password");
 
@@ -1556,7 +1592,7 @@ mod tests {
                 ))),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.set_consuming_wallet_derivation_path("invalid path", "password");
 
@@ -1601,7 +1637,7 @@ mod tests {
                 ))),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.set_consuming_wallet_derivation_path("m/44'/0'/0'/1/0", "password");
 
@@ -1644,7 +1680,7 @@ mod tests {
                 ))),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let _ = subject.set_consuming_wallet_derivation_path("m/44'/0'/0'/1/0", "password");
     }
@@ -1659,7 +1695,7 @@ mod tests {
                 Some("existing_address"),
                 false,
             )));
-        let subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
 
         let result = subject.earning_wallet_address().unwrap().unwrap();
 
@@ -1678,7 +1714,7 @@ mod tests {
                 None,
                 false,
             )));
-        let subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
 
         let result = subject.earning_wallet_from_address().unwrap();
 
@@ -1700,7 +1736,7 @@ mod tests {
                 Some("123456invalid"),
                 false,
             )));
-        let subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
 
         let _ = subject.earning_wallet_from_address();
     }
@@ -1715,7 +1751,7 @@ mod tests {
                 Some("0x7d6dabd6b5c75291a3258c29b418f5805792a875"),
                 false,
             )));
-        let subject = PersistentConfigurationReal::new(Box::new(config_dao));
+        let subject = PersistentConfigurationReal::new(Box::new(config_dao),&0);
 
         let result = subject.earning_wallet_from_address().unwrap();
 
@@ -1746,7 +1782,7 @@ mod tests {
                 .commit_result(Ok(())),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result =
             subject.set_earning_wallet_address("0x7d6dabd6b5c75291a3258c29b418f5805792a875");
@@ -1779,7 +1815,7 @@ mod tests {
                 ))),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result =
             subject.set_earning_wallet_address("0x7d6dabd6b5c75291a3258c29b418f5805792a875");
@@ -1800,7 +1836,7 @@ mod tests {
                 ))),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result =
             subject.set_earning_wallet_address("0x7d6dabd6b5c75291a3258c29b418f5805792a875");
@@ -1826,7 +1862,7 @@ mod tests {
                 ))),
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result = subject.set_earning_wallet_address("invalid address");
 
@@ -1851,7 +1887,7 @@ mod tests {
                 .commit_result(Ok(()))
         );
         let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
-        let mut subject = PersistentConfigurationReal::new(config_dao);
+        let mut subject = PersistentConfigurationReal::new(config_dao,&0);
 
         let result_cp = subject.set_clandestine_port (1234);
         let result_gp = subject.set_gas_price(4321);

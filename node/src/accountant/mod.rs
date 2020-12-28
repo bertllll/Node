@@ -236,7 +236,7 @@ impl Accountant {
             receivable_dao: receivable_dao_factory.make(),
             banned_dao: banned_dao_factory.make(),
             persistent_configuration: Box::new(PersistentConfigurationReal::new(
-                config_dao_factory.make(),
+                config_dao_factory.make(),&0
             )),
             report_accounts_payable_sub: None,
             retrieve_transactions_sub: None,
