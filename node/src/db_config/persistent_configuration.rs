@@ -116,6 +116,28 @@ pub trait PersistentConfiguration {
     fn rollback(&mut self) -> Result<(), PersistentConfigError>;
 }
 
+/*
+
+
+match Self::set_wallet_info (persistent_config, seed, cwdp, ewa) {
+    Err (e) => {
+        persistent_config.rollback();
+        return Err (e)
+    },
+    Ok(()) => (),
+}
+
+    fn set_wallet_info (persistent_config, seed, cwdp, ewa) -> PersistentConfigError {
+        persistent_config.set_seed(seed)?;
+        persistent_config.set_consuming_wallet_derivation_path(cwdp)?;
+        persistent_config.set_earning_wallet_address(ewa)?;
+        persistent_config.commit()?;
+        Ok(())
+    }
+
+ */
+
+
 pub struct PersistentConfigurationReal {
     dao: Box<dyn ConfigDao>,
     writer_opt: Option<Box<dyn ConfigDaoReadWrite>>,
@@ -454,10 +476,6 @@ impl PersistentConfigurationReal {
             Some (writer) => Ok(writer.set(name, value)?),
             None => {
                 let mut writer: Box<dyn ConfigDaoReadWrite> = self.dao.start_transaction()?;
-                let mut writer: Box<dyn ConfigDaoReadWrite> + 'static = unsafe {
-                    let writer_ptr = &writer as *const Box<dyn ConfigDaoReadWrite>;
-                    *writer_ptr
-                };
                 writer.set (name, value)?;
                 self.writer_opt = Some (writer);
                 Ok(())
