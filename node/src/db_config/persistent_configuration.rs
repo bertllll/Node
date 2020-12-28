@@ -138,13 +138,13 @@ match Self::set_wallet_info (persistent_config, seed, cwdp, ewa) {
  */
 
 
-pub struct PersistentConfigurationReal {
-    dao: Box<dyn ConfigDao>,
-    writer_opt: Option<Box<dyn ConfigDaoReadWrite>>,
+pub struct PersistentConfigurationReal<'a, 'b: 'a> {
+    dao: Box<dyn ConfigDao + 'b>,
+    writer_opt: Option<Box<dyn ConfigDaoReadWrite + 'a>>,
     scl: SecureConfigLayer,
 }
 
-impl PersistentConfiguration for PersistentConfigurationReal {
+impl<'a, 'b: 'a> PersistentConfiguration for PersistentConfigurationReal<'a, 'b> {
     fn current_schema_version(&self) -> String {
         match self.dao.get("schema_version") {
             Ok(record) => match record.value_opt {
@@ -230,10 +230,10 @@ impl PersistentConfiguration for PersistentConfigurationReal {
         Ok(self.dao.get("seed")?.value_opt.is_some())
     }
 
-    fn set_mnemonic_seed<'b, 'c>(
+    fn set_mnemonic_seed<'c, 'd>(
         &mut self,
-        seed: &'b dyn AsRef<[u8]>,
-        db_password: &'c str,
+        seed: &'c dyn AsRef<[u8]>,
+        db_password: &'d str,
     ) -> Result<(), PersistentConfigError> {
         let mut writer = self.dao.start_transaction()?;
         let encoded_seed =
@@ -312,9 +312,9 @@ impl PersistentConfiguration for PersistentConfigurationReal {
         }
     }
 
-    fn set_consuming_wallet_public_key<'b>(
+    fn set_consuming_wallet_public_key<'c>(
         &mut self,
-        public_key: &'b PlainData,
+        public_key: &'c PlainData,
     ) -> Result<(), PersistentConfigError> {
         let public_key_text: String = public_key.as_slice().to_hex();
         let mut writer = self.dao.start_transaction()?;
@@ -435,21 +435,21 @@ impl PersistentConfiguration for PersistentConfigurationReal {
     }
 }
 
-impl From<Box<dyn ConnectionWrapper>> for PersistentConfigurationReal {
+impl From<Box<dyn ConnectionWrapper>> for PersistentConfigurationReal<'_, '_> {
     fn from(conn: Box<dyn ConnectionWrapper>) -> Self {
         let config_dao: Box<dyn ConfigDao> = Box::new(ConfigDaoReal::new(conn));
         Self::from(config_dao)
     }
 }
 
-impl From<Box<dyn ConfigDao>> for PersistentConfigurationReal {
+impl From<Box<dyn ConfigDao>> for PersistentConfigurationReal<'_, '_> {
     fn from(config_dao: Box<dyn ConfigDao>) -> Self {
         Self::new(config_dao)
     }
 }
 
-impl PersistentConfigurationReal {
-    pub fn new(config_dao: Box<dyn ConfigDao>) -> PersistentConfigurationReal {
+impl<'a, 'b: 'a> PersistentConfigurationReal<'a, 'b> {
+    pub fn new(config_dao: Box<dyn ConfigDao>) -> PersistentConfigurationReal<'a, 'b> {
         PersistentConfigurationReal {
             dao: config_dao,
             writer_opt: None,
@@ -471,13 +471,12 @@ impl PersistentConfigurationReal {
         }
     }
 
-    fn set(&mut self, name: &str, value: Option<String>) -> Result<(), PersistentConfigError> {
+    fn set(&'b mut self, name: &str, value: Option<String>) -> Result<(), PersistentConfigError> {
         match &self.writer_opt {
             Some (writer) => Ok(writer.set(name, value)?),
             None => {
-                let mut writer: Box<dyn ConfigDaoReadWrite> = self.dao.start_transaction()?;
+                let mut writer: Box<dyn ConfigDaoReadWrite + 'a> = self.dao.start_transaction()?;
                 writer.set (name, value)?;
-                self.writer_opt = Some (writer);
                 Ok(())
             }
         }
