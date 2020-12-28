@@ -48,6 +48,8 @@ pub struct PersistentConfigurationMock {
     start_block_results: RefCell<Vec<Result<Option<u64>, PersistentConfigError>>>,
     set_start_block_params: Arc<Mutex<Vec<u64>>>,
     set_start_block_results: RefCell<Vec<Result<(), PersistentConfigError>>>,
+    commit_results: RefCell<Vec<Result<(), PersistentConfigError>>>,
+    rollback_results: RefCell<Vec<Result<(), PersistentConfigError>>>,
 }
 
 impl PersistentConfiguration for PersistentConfigurationMock {
@@ -207,6 +209,14 @@ impl PersistentConfiguration for PersistentConfigurationMock {
     fn set_start_block(&mut self, value: u64) -> Result<(), PersistentConfigError> {
         self.set_start_block_params.lock().unwrap().push(value);
         Self::result_from(&self.set_start_block_results)
+    }
+
+    fn commit(&mut self) -> Result<(), PersistentConfigError> {
+        Self::result_from(&self.commit_results)
+    }
+
+    fn rollback(&mut self) -> Result<(), PersistentConfigError> {
+        Self::result_from(&self.rollback_results)
     }
 }
 
@@ -487,6 +497,16 @@ impl PersistentConfigurationMock {
 
     pub fn set_start_block_result(self, result: Result<(), PersistentConfigError>) -> Self {
         self.set_start_block_results.borrow_mut().push(result);
+        self
+    }
+
+    pub fn commit_result(self, result: Result<(), PersistentConfigError>) -> Self {
+        self.commit_results.borrow_mut().push (result);
+        self
+    }
+
+    pub fn rollback_result(self, result: Result<(), PersistentConfigError>) -> Self {
+        self.rollback_results.borrow_mut().push (result);
         self
     }
 

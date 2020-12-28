@@ -1,7 +1,7 @@
 // Copyright (c) 2017-2019, Substratum LLC (https://substratum.net) and/or its affiliates. All rights reserved.
 use crate::blockchain::bip32::Bip32ECKeyPair;
 use crate::database::connection_wrapper::ConnectionWrapper;
-use crate::db_config::config_dao::{ConfigDao, ConfigDaoError, ConfigDaoReadWrite, ConfigDaoReal};
+use crate::db_config::config_dao::{ConfigDao, ConfigDaoError, ConfigDaoReadWrite, ConfigDaoReal, ConfigDaoRecord};
 use crate::db_config::secure_config_layer::{SecureConfigLayer, SecureConfigLayerError};
 use crate::db_config::typed_config_layer::{
     decode_bytes, decode_u64, encode_bytes, encode_u64, TypedConfigLayerError,
@@ -111,10 +111,14 @@ pub trait PersistentConfiguration {
     ) -> Result<(), PersistentConfigError>;
     fn start_block(&self) -> Result<Option<u64>, PersistentConfigError>;
     fn set_start_block(&mut self, value: u64) -> Result<(), PersistentConfigError>;
+
+    fn commit(&mut self) -> Result<(), PersistentConfigError>;
+    fn rollback(&mut self) -> Result<(), PersistentConfigError>;
 }
 
 pub struct PersistentConfigurationReal {
     dao: Box<dyn ConfigDao>,
+    writer_opt: Option<Box<dyn ConfigDaoReadWrite>>,
     scl: SecureConfigLayer,
 }
 
@@ -181,9 +185,7 @@ impl PersistentConfiguration for PersistentConfigurationReal {
             panic!("Can't continue; clandestine port configuration is incorrect. Must be between {} and {}, not {}. Specify --clandestine-port <p> where <p> is an unused port.",
                     LOWEST_USABLE_INSECURE_PORT, HIGHEST_USABLE_PORT, port);
         }
-        let mut writer = self.dao.start_transaction()?;
-        writer.set("clandestine_port", encode_u64(Some(u64::from(port)))?)?;
-        Ok(writer.commit()?)
+        self.set("clandestine_port", encode_u64(Some(u64::from(port)))?)
     }
 
     fn gas_price(&self) -> Result<Option<u64>, PersistentConfigError> {
@@ -191,9 +193,7 @@ impl PersistentConfiguration for PersistentConfigurationReal {
     }
 
     fn set_gas_price(&mut self, gas_price: u64) -> Result<(), PersistentConfigError> {
-        let mut writer = self.dao.start_transaction()?;
-        writer.set("gas_price", encode_u64(Some(gas_price))?)?;
-        Ok(writer.commit()?)
+        self.set("gas_price", encode_u64(Some(gas_price))?)
     }
 
     fn mnemonic_seed(&self, db_password: &str) -> Result<Option<PlainData>, PersistentConfigError> {
@@ -397,6 +397,20 @@ impl PersistentConfiguration for PersistentConfigurationReal {
         writer.set("start_block", encode_u64(Some(value))?)?;
         Ok(writer.commit()?)
     }
+
+    fn commit(&mut self) -> Result<(), PersistentConfigError> {
+        match self.writer_opt.take() {
+            None => Err (PersistentConfigError::TransactionError),
+            Some(mut writer) => Ok(writer.commit()?),
+        }
+    }
+
+    fn rollback(&mut self) -> Result<(), PersistentConfigError> {
+        match self.writer_opt.take() {
+            None => Err (PersistentConfigError::TransactionError),
+            Some(_) => Ok(()), // will roll back when discarded
+        }
+    }
 }
 
 impl From<Box<dyn ConnectionWrapper>> for PersistentConfigurationReal {
@@ -416,7 +430,38 @@ impl PersistentConfigurationReal {
     pub fn new(config_dao: Box<dyn ConfigDao>) -> PersistentConfigurationReal {
         PersistentConfigurationReal {
             dao: config_dao,
+            writer_opt: None,
             scl: SecureConfigLayer::default(),
+        }
+    }
+
+    fn get_all(&self) -> Result<Vec<ConfigDaoRecord>, PersistentConfigError> {
+        match &self.writer_opt {
+            Some (writer) => Ok(writer.get_all()?),
+            None => Ok(self.dao.get_all()?)
+        }
+    }
+
+    fn get(&self, name: &str) -> Result<ConfigDaoRecord, PersistentConfigError> {
+        match &self.writer_opt {
+            Some (writer) => Ok(writer.get(name)?),
+            None => Ok(self.dao.get(name)?)
+        }
+    }
+
+    fn set(&mut self, name: &str, value: Option<String>) -> Result<(), PersistentConfigError> {
+        match &self.writer_opt {
+            Some (writer) => Ok(writer.set(name, value)?),
+            None => {
+                let mut writer: Box<dyn ConfigDaoReadWrite> = self.dao.start_transaction()?;
+                let mut writer: Box<dyn ConfigDaoReadWrite> + 'static = unsafe {
+                    let writer_ptr = &writer as *const Box<dyn ConfigDaoReadWrite>;
+                    *writer_ptr
+                };
+                writer.set (name, value)?;
+                self.writer_opt = Some (writer);
+                Ok(())
+            }
         }
     }
 }
@@ -1774,5 +1819,36 @@ mod tests {
                 "invalid address".to_string()
             ))
         );
+    }
+
+    #[test]
+    fn commits_work() {
+        let set_params_arc = Arc::new(Mutex::new(vec![]));
+        let commit_params_arc = Arc::new(Mutex::new(vec![]));
+        let writer = Box::new(
+            ConfigDaoWriteableMock::new()
+                .set_params(&set_params_arc)
+                .set_result(Ok(()))
+                .set_result(Ok(()))
+                .commit_params(&commit_params_arc)
+                .commit_result(Ok(()))
+        );
+        let config_dao = Box::new(ConfigDaoMock::new().start_transaction_result(Ok(writer)));
+        let mut subject = PersistentConfigurationReal::new(config_dao);
+
+        let result_cp = subject.set_clandestine_port (1234);
+        let result_gp = subject.set_gas_price(4321);
+        let result_c = subject.commit();
+
+        assert_eq! (result_cp, Ok(()));
+        assert_eq! (result_gp, Ok(()));
+        assert_eq! (result_c, Ok(()));
+        let set_params = set_params_arc.lock().unwrap();
+        assert_eq! (*set_params, vec![
+            ("clandestine_port".to_string(), Some ("1234".to_string())),
+            ("gas_price".to_string(), Some ("4321".to_string()))
+        ]);
+        let commit_params = commit_params_arc.lock().unwrap();
+        assert_eq! (*commit_params, vec![()])
     }
 }
