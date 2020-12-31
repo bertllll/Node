@@ -144,7 +144,7 @@ pub struct PersistentConfigurationReal<'a, 'b: 'a> {
     scl: SecureConfigLayer,
 }
 
-impl<'a:'c, 'b: 'a +'c, 'c, > PersistentConfiguration for PersistentConfigurationReal<'a, 'b> {
+impl <'b:'a,'a> PersistentConfiguration for PersistentConfigurationReal<'a, 'b> {
     fn current_schema_version(&self) -> String {
         match self.dao.get("schema_version") {
             Ok(record) => match record.value_opt {
@@ -202,7 +202,7 @@ impl<'a:'c, 'b: 'a +'c, 'c, > PersistentConfiguration for PersistentConfiguratio
         }
     }
 
-    fn set_clandestine_port(& mut self, port: u16) -> Result<(), PersistentConfigError> {
+    fn set_clandestine_port<'g,'h>(&'g mut self, port: u16) -> Result<(), PersistentConfigError> {
         if port < LOWEST_USABLE_INSECURE_PORT {
             panic!("Can't continue; clandestine port configuration is incorrect. Must be between {} and {}, not {}. Specify --clandestine-port <p> where <p> is an unused port.",
                     LOWEST_USABLE_INSECURE_PORT, HIGHEST_USABLE_PORT, port);
@@ -478,7 +478,7 @@ impl<'b: 'a +'c, 'a: 'c, 'c> PersistentConfigurationReal<'a, 'b> {
         }
     }
 
-    fn set(&'b mut self, name: &'c str, value: Option<String>) -> Result<(), PersistentConfigError> {
+    fn set(&'b mut self, name: &'b str, value: Option<String>) -> Result<(), PersistentConfigError> {
         match &self.writer_opt{
             LifetimeSaver::Initialized(writer) => Ok(writer.set(name, value)?),
             LifetimeSaver::Uninitialized(ltc) => {

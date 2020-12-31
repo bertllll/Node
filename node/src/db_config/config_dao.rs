@@ -47,7 +47,7 @@ pub trait ConfigDaoReadWrite: ConfigDaoRead + ConfigDaoWrite {}
 // ConfigDaoReadWrite, which contains a Transaction and _can_ write to the database.
 pub trait ConfigDao: ConfigDaoRead {
     fn start_transaction<'b, 'c: 'b>(
-        &'c mut self, reference:&'c u8
+        &'c mut self, reference:&'b u8
     ) -> Result<Box<dyn ConfigDaoReadWrite + 'b>, ConfigDaoError>;
 }
 
@@ -57,7 +57,7 @@ pub struct ConfigDaoReal {
 
 impl ConfigDao for ConfigDaoReal {
     fn start_transaction<'b, 'c: 'b>(
-        &'c mut self, reference: &'c u8
+        &'c mut self, reference: &'b u8
     ) -> Result<Box<dyn ConfigDaoReadWrite + 'b>, ConfigDaoError> {
         reference;
         let transaction: Transaction<'b> = match self.conn.transaction() {
